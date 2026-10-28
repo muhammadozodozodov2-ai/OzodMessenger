@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OzodMessenger — Веб-чат</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #0f172a; color: #f8fafc; height: 100vh; display: flex; justify-content: center; align-items: center; }
+        .container { width: 100%; max-width: 950px; height: 90vh; background: #1e293b; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); display: flex; overflow: hidden; }
+        
+        /* Экраны */
+        .screen { width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; }
+        .hidden { display: none !important; }
+        
+        /* Авторизация */
+        .auth-card { background: #334155; padding: 30px; border-radius: 12px; width: 100%; max-width: 400px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        .auth-card h2 { margin-bottom: 15px; color: #38bdf8; }
+        .auth-tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+        .auth-tab { flex: 1; padding: 10px; background: #1e293b; border: 1px solid #475569; color: #94a3b8; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        .auth-tab.active { background: #0284c7; color: white; border-color: #0284c7; }
+        
+        .auth-card input, .auth-card select { width: 100%; padding: 12px; margin-bottom: 12px; border-radius: 8px; border: 1px solid #475569; background: #1e293b; color: white; font-size: 15px; }
+        .auth-card button.submit-btn { width: 100%; padding: 12px; background: #0284c7; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; margin-top: 5px; }
+        .auth-card button.submit-btn:hover { background: #0369a1; }
+        .error-msg { color: #f87171; font-size: 13px; margin-bottom: 10px; display: none; }
+
+        /* Интерфейс мессенджера */
+        .app-layout { display: flex; width: 100%; height: 100%; }
+        .sidebar { width: 320px; background: #0f172a; border-right: 1px solid #334155; display: flex; flex-direction: column; }
+        .sidebar-header { padding: 15px; background: #1e293b; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #334155; }
+        .profile-container { display: flex; align-items: center; gap: 10px; }
+        .user-avatar { width: 45px; height: 45px; border-radius: 50%; object-fit: cover; background: #475569; border: 2px solid #38bdf8; }
+        .user-info h4 { font-size: 15px; color: #f8fafc; }
+        .user-info p { font-size: 12px; color: #94a3b8; }
+        .logout-btn { background: #ef4444; color: white; border: none; padding: 6px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+
+        .chat-list { flex: 1; overflow-y: auto; padding: 10px; }
+        .chat-item { padding: 12px; border-radius: 8px; cursor: pointer; margin-bottom: 5px; background: #1e293b; display: flex; align-items: center; gap: 10px; transition: 0.2s; }
+        .chat-item:hover, .chat-item.active { background: #334155; }
+
+        .sidebar-footer { padding: 10px; border-top: 1px solid #334155; display: flex; gap: 5px; }
+        .sidebar-footer button { flex: 1; padding: 8px; background: #0284c7; border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 13px; }
+
+        /* Окно чата */
+        .chat-area { flex: 1; display: flex; flex-direction: column; background: #1e293b; }
+        .chat-header { padding: 15px; background: #334155; font-weight: bold; font-size: 16px; border-bottom: 1px solid #475569; display: flex; justify-content: space-between; align-items: center; }
+        .messages-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+        .message { max-width: 70%; padding: 10px 14px; border-radius: 10px; font-size: 14px; word-break: break-word; position: relative; }
+        .message.incoming { background: #334155; align-self: flex-start; }
+        .message.outgoing { background: #0284c7; align-self: flex-end; }
+        .message .sender { font-size: 11px; color: #cbd5e1; margin-bottom: 3px; display: block; font-weight: bold; }
+        .message img, .message video { max-width: 100%; border-radius: 6px; margin-top: 5px; }
+
+        .chat-input-box { padding: 15px; background: #334155; display: flex; gap: 10px; align-items: center; border-top: 1px solid #475569; }
+        .chat-input-box input[type="text"] { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #475569; background: #1e293b; color: white; font-size: 14px; }
+        .chat-input-box input[type="file"] { display: none; }
+        .file-btn { background: #475569; color: white; padding: 10px 12px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+        .send-btn { background: #0284c7; color: white; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <!-- Экран авторизации -->
+        <div id="authScreen" class="screen">
+            <div class="auth-card">
+                <h2>OzodMessenger</h2>
+                
+                <div class="auth-tabs">
+                    <button id="tabLogin" class="auth-tab active" onclick="switchAuthMode('login')">Войти</button>
+                    <button id="tabRegister" class="auth-tab" onclick="switchAuthMode('register')">Регистрация</button>
+                </div>
+
+                <div id="errorMsg" class="error-msg"></div>
+
+                <div id="registerFields" class="hidden">
+                    <input type="text" id="regNicknameInput" placeholder="Ваше имя (Никнейм)">
+                    <select id="avatarSelect">
+                        <option value="https://api.dicebear.com/7.x/bottts/svg?seed=1">Аватар 1 (Робот)</option>
+                        <option value="https://api.dicebear.com/7.x/avataaars/svg?seed=2">Аватар 2 (Человек)</option>
+                        <option value="https://api.dicebear.com/7.x/pixel-art/svg?seed=3">Аватар 3 (Пиксель)</option>
+                        <option value="https://api.dicebear.com/7.x/bottts/svg?seed=4">Аватар 4 (Киборг)</option>
+                    </select>
+                </div>
+
+                <input type="text" id="idInput" placeholder="Ваш ID (например: ozod_777)">
+                <input type="password" id="passwordInput" placeholder="Ваш пароль">
+
+                <button id="submitAuthBtn" class="submit-btn" onclick="handleAuth()">Войти в аккаунт</button>
+            </div>
+        </div>
+
+        <!-- Экран мессенджера -->
+        <div id="appScreen" class="screen hidden" style="padding:0;">
+            <div class="app-layout">
+                <!-- Левая панель -->
+                <div class="sidebar">
+                    <div class="sidebar-header">
+                        <div class="profile-container">
+                            <img id="myAvatar" class="user-avatar" src="" alt="Avatar">
+                            <div class="user-info">
+                                <h4 id="myNickname">Имя</h4>
+                                <p id="myId">#ID</p>
+                            </div>
+                        </div>
+                        <button class="logout-btn" onclick="logout()">Выйти</button>
+                    </div>
+                    <div class="chat-list" id="chatList">
+                        <div class="chat-item active" onclick="switchChat('global')">🌍 Общий чат школы</div>
+                    </div>
+                    <div class="sidebar-footer">
+                        <button onclick="addContactModal()">+ Чат по ID</button>
+                    </div>
+                </div>
+
+                <!-- Правая область (Чат) -->
+                <div class="chat-area">
+                    <div class="chat-header" id="chatTitle">Общий чат школы</div>
+                    <div class="messages-box" id="messagesBox"></div>
+                    <div class="chat-input-box">
+                        <label class="file-btn" for="fileInput">📁</label>
+                        <input type="file" id="fileInput" onchange="sendFile(event)">
+                        <input type="text" id="messageInput" placeholder="Написать сообщение..." onkeydown="if(event.key==='Enter') sendMessage()">
+                        <button class="send-btn" onclick="sendMessage()">Отправить</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, push, set, get, child, onChildAdded } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDJbNbDYb6GDxT4VZrkjDmFugLu0lU3m00",
+            authDomain: "ozodmessenger.firebaseapp.com",
+            databaseURL: "https://ozodmessenger-default-rtdb.firebaseio.com",
+            projectId: "ozodmessenger",
+            storageBucket: "ozodmessenger.firebasestorage.app",
+            messagingSenderId: "885603789570",
+            appId: "1:885603789570:web:244867b82b7f6c49d7f01b",
+            measurementId: "G-0VNHM92NR5"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        let currentUser = null;
+        let currentChat = "global";
+        let authMode = "login";
+
+        // Проверка сохраненной сессии (не выходить из системы)
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedUser = localStorage.getItem('ozod_user');
+            if (savedUser) {
+                currentUser = JSON.parse(savedUser);
+                enterApp();
+            }
+        });
+
+        window.switchAuthMode = function(mode) {
+            authMode = mode;
+            const err = document.getElementById('errorMsg');
+            err.style.display = 'none';
+
+            if (mode === 'login') {
+                document.getElementById('tabLogin').classList.add('active');
+                document.getElementById('tabRegister').classList.remove('active');
+                document.getElementById('registerFields').classList.add('hidden');
+                document.getElementById('submitAuthBtn').innerText = 'Войти в аккаунт';
+            } else {
+                document.getElementById('tabRegister').classList.add('active');
+                document.getElementById('tabLogin').classList.remove('active');
+                document.getElementById('registerFields').classList.remove('hidden');
+                document.getElementById('submitAuthBtn').innerText = 'Зарегистрироваться';
+            }
+        }
+
+        window.handleAuth = async function() {
+            const userId = document.getElementById('idInput').value.trim().toLowerCase();
+            const password = document.getElementById('passwordInput').value.trim();
+            const err = document.getElementById('errorMsg');
+
+            if (!userId || !password) {
+                showError("Заполните ID и пароль!");
+                return;
+            }
+
+            const dbRef = ref(db);
+
+            if (authMode === 'register') {
+                const nickname = document.getElementById('regNicknameInput').value.trim();
+                const avatar = document.getElementById('avatarSelect').value;
+
+                if (!nickname) {
+                    showError("Введите ваш никнейм!");
+                    return;
+                }
+
+                // Проверяем, свободен ли ID
+                const snapshot = await get(child(dbRef, `users/${userId}`));
+                if (snapshot.exists()) {
+                    showError("Этот ID уже занят! Выберите другой.");
+                    return;
+                }
+
+                const userData = { userId, nickname, password, avatar };
+                await set(ref(db, `users/${userId}`), userData);
+                
+                currentUser = userData;
+                localStorage.setItem('ozod_user', JSON.stringify(currentUser));
+                enterApp();
+
+            } else {
+                // Вход
+                const snapshot = await get(child(dbRef, `users/${userId}`));
+                if (!snapshot.exists()) {
+                    showError("Пользователь с таким ID не найден!");
+                    return;
+                }
+
+                const userData = snapshot.val();
+                if (userData.password !== password) {
+                    showError("Неверный пароль!");
+                    return;
+                }
+
+                currentUser = userData;
+                localStorage.setItem('ozod_user', JSON.stringify(currentUser));
+                enterApp();
+            }
+        }
+
+        function showError(text) {
+            const err = document.getElementById('errorMsg');
+            err.innerText = text;
+            err.style.display = 'block';
+        }
+
+        function enterApp() {
+            document.getElementById('myNickname').innerText = currentUser.nickname;
+            document.getElementById('myId').innerText = "@" + currentUser.userId;
+            document.getElementById('myAvatar').src = currentUser.avatar;
+
+            document.getElementById('authScreen').classList.add('hidden');
+            document.getElementById('appScreen').classList.remove('hidden');
+
+            loadMessages();
+        }
+
+        window.logout = function() {
+            localStorage.removeItem('ozod_user');
+            currentUser = null;
+            location.reload();
+        }
+
+        window.sendMessage = function() {
+            const input = document.getElementById('messageInput');
+            const text = input.value.trim();
+            if (!text) return;
+
+            const msgRef = ref(db, 'chats/' + currentChat + '/messages');
+            push(msgRef, {
+                senderName: currentUser.nickname,
+                senderId: currentUser.userId,
+                avatar: currentUser.avatar,
+                text: text,
+                type: 'text',
+                timestamp: Date.now()
+            });
+
+            input.value = '';
+        }
+
+        window.sendFile = function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const fileData = e.target.result;
+                const msgRef = ref(db, 'chats/' + currentChat + '/messages');
+                
+                let type = 'file';
+                if (file.type.startsWith('image/')) type = 'image';
+                if (file.type.startsWith('video/')) type = 'video';
+
+                push(msgRef, {
+                    senderName: currentUser.nickname,
+                    senderId: currentUser.userId,
+                    avatar: currentUser.avatar,
+                    fileData: fileData,
+                    fileName: file.name,
+                    type: type,
+                    timestamp: Date.now()
+                });
+            };
+            reader.readAsDataURL(file);
+        }
+
+        let currentListener = null;
+
+        function loadMessages() {
+            const box = document.getElementById('messagesBox');
+            box.innerHTML = '';
+
+            const msgRef = ref(db, 'chats/' + currentChat + '/messages');
+            onChildAdded(msgRef, (snapshot) => {
+                const msg = snapshot.val();
+                const div = document.createElement('div');
+                div.className = `message ${msg.senderId === currentUser.userId ? 'outgoing' : 'incoming'}`;
+                
+                let content = `<span class="sender">${msg.senderName} (@${msg.senderId})</span>`;
+                if (msg.type === 'text') {
+                    content += `<span>${msg.text}</span>`;
+                } else if (msg.type === 'image') {
+                    content += `<img src="${msg.fileData}" alt="image">`;
+                } else if (msg.type === 'video') {
+                    content += `<video controls src="${msg.fileData}"></video>`;
+                } else {
+                    content += `<a href="${msg.fileData}" download="${msg.fileName}" style="color:white;">📥 ${msg.fileName}</a>`;
+                }
+
+                div.innerHTML = content;
+                box.appendChild(div);
+                box.scrollTop = box.scrollHeight;
+            });
+        }
+
+        window.addContactModal = function() {
+            const friendId = prompt("Введи ID пользователя для личного чата (например: petya_123):");
+            if (friendId) {
+                const cleanId = friendId.trim().toLowerCase();
+                if (cleanId === currentUser.userId) {
+                    alert("Нельзя создать чат с самим собой!");
+                    return;
+                }
+                
+                // Генерируем ID личного чата
+                const chatId = [currentUser.userId, cleanId].sort().join('_private_');
+                
+                // Проверяем, есть ли уже этот чат в списке
+                const list = document.getElementById('chatList');
+                const existing = document.getElementById('chat_item_' + chatId);
+                
+                if (!existing) {
+                    const item = document.createElement('div');
+                    item.className = 'chat-item';
+                    item.id = 'chat_item_' + chatId;
+                    item.innerText = '💬 Чат: @' + cleanId;
+                    item.onclick = function() {
+                        document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
+                        item.classList.add('active');
+                        currentChat = chatId;
+                        document.getElementById('chatTitle').innerText = 'Чат с @' + cleanId;
+                        loadMessages();
+                    };
+                    list.appendChild(item);
+                }
+                
+                // Авто-переключение
+                document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
+                const target = document.getElementById('chat_item_' + chatId);
+                if (target) target.click();
+            }
+        }
+    </script>
+</body>
+</html>
